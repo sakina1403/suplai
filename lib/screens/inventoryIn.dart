@@ -1,10 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 
 import 'package:barcode_scan/barcode_scan.dart';
 import 'package:flutter/services.dart';
+import 'package:scoped_model/scoped_model.dart';
 
 import 'package:suplai/utils/constants.dart';
 import 'package:suplai/utils/request.dart';
+import 'package:suplai/utils/fetchProductDetails.dart';
+import 'package:suplai/screens/productDetail.dart';
+import 'package:suplai/models/product.dart';
+import 'package:suplai/models/vendor.dart';
+import 'package:suplai/models/location.dart';
+import 'package:suplai/scoped_models/main.dart';
 
 class InventoryIn extends StatefulWidget {
   @override
@@ -22,13 +30,17 @@ class InventoryInState extends State<InventoryIn> {
   String result = '';
   List<DropdownMenuItem<String>> locationListDropDown = List();
   List<DropdownMenuItem<String>> vendorListDropDown = List();
-  String currentLocation;
-  String currentVendor;
-  bool _isLoading = true;
+  Location currentlocation;
+  Vendor currentVendor;
+  bool _isLoading = false;
+  GlobalKey<ScaffoldState> _key = GlobalKey<ScaffoldState>();
+  Product scannedProduct = Product();
+  List<Location> locationList = [];
+  List<Vendor> vendorList = [];
 
   @override
   initState() {
-    fetchLocationList();
+    fetchlocationList();
     fetchVendorList();
     super.initState();
   }
@@ -36,18 +48,34 @@ class InventoryInState extends State<InventoryIn> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Inventory In'),
-      ),
-      body: Column(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: <Widget>[
-          locationDropDown('Select Location', locationListDropDown),
-          vendorDropDown('Select Vendor', vendorListDropDown),
-          iconButton('START SCANNING', Icons.space_bar, scan)
-        ],
-      ),
-    );
+        key: _key,
+        appBar: AppBar(
+          title: Text('Inventory In'),
+        ),
+        body: Stack(children: [
+          Column(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: <Widget>[
+              locationDropDown('Select location', locationListDropDown),
+              vendorDropDown('Select Vendor', vendorListDropDown),
+              iconButton('START SCANNING', Icons.space_bar, scan)
+            ],
+          ),
+          _isLoading
+              ? Stack(
+                  children: [
+                    Opacity(
+                      opacity: 0.3,
+                      child: const ModalBarrier(
+                          dismissible: false, color: Colors.grey),
+                    ),
+                    Center(
+                      child: CircularProgressIndicator(),
+                    ),
+                  ],
+                )
+              : Container()
+        ]));
   }
 
   fetchPrefsInfo() async {
@@ -59,9 +87,8 @@ class InventoryInState extends State<InventoryIn> {
     });
   }
 
-  fetchLocationList() async {
+  fetchlocationList() async {
     await fetchPrefsInfo();
-    List<String> locationList = [];
     Map<String, dynamic> body = {
       "params": {
         "args": [
@@ -82,14 +109,16 @@ class InventoryInState extends State<InventoryIn> {
     Map<String, dynamic> responseBody =
         await postRequest(email, password, body);
     responseBody['result'].forEach((resultObj) {
-      locationList.add(resultObj['name']);
+      setState(() {
+        locationList
+            .add(Location(displayName: resultObj['name'], id: resultObj['id']));
+      });
     });
-    setLocationItems(locationList);
+    setlocationItems(locationList);
   }
 
   fetchVendorList() async {
     await fetchPrefsInfo();
-    List<String> vendorList = [];
     Map<String, dynamic> body = {
       "params": {
         "args": [
@@ -112,31 +141,34 @@ class InventoryInState extends State<InventoryIn> {
     Map<String, dynamic> responseBody =
         await postRequest(email, password, body);
     responseBody['result'].forEach((resultObj) {
-      vendorList.add(resultObj['display_name']);
+      setState(() {
+        vendorList.add(Vendor(
+            displayName: resultObj['display_name'], id: resultObj['id']));
+      });
     });
     setVendorList(vendorList);
   }
 
-  setLocationItems(List<String> locationList) {
-    for (String location in locationList) {
+  setlocationItems(List<Location> locationList) {
+    for (Location location in locationList) {
       setState(() {
         locationListDropDown.add(new DropdownMenuItem(
-            value: location,
+            value: location.displayName,
             child: Text(
-              location,
+              location.displayName,
               style: TextStyle(color: colorCustom, fontSize: 20),
             )));
       });
     }
   }
 
-  setVendorList(List<String> vendorList) {
-    for (String vendor in vendorList) {
+  setVendorList(List<Vendor> vendorList) {
+    for (Vendor vendor in vendorList) {
       setState(() {
         vendorListDropDown.add(new DropdownMenuItem(
-            value: vendor,
+            value: vendor.displayName,
             child: Text(
-              vendor,
+              vendor.displayName,
               style: TextStyle(color: colorCustom, fontSize: 20),
             )));
       });
@@ -150,7 +182,7 @@ class InventoryInState extends State<InventoryIn> {
         elevation: 20,
         isExpanded: true,
         items: list,
-        value: currentLocation,
+        value: currentlocation == null ? null : currentlocation.displayName,
         icon: Icon(
           Icons.arrow_drop_down,
           color: colorCustom,
@@ -161,7 +193,9 @@ class InventoryInState extends State<InventoryIn> {
         ),
         onChanged: (item) {
           setState(() {
-            currentLocation = item;
+            currentlocation = locationList.firstWhere(
+                (loc) => loc.displayName == item,
+                orElse: () => locationList.first);
           });
         },
       ),
@@ -175,7 +209,7 @@ class InventoryInState extends State<InventoryIn> {
         elevation: 20,
         isExpanded: true,
         items: list,
-        value: currentVendor,
+        value: currentVendor == null ? null : currentVendor.displayName,
         icon: Icon(
           Icons.arrow_drop_down,
           color: colorCustom,
@@ -185,8 +219,12 @@ class InventoryInState extends State<InventoryIn> {
           style: TextStyle(color: Colors.black, fontSize: 25),
         ),
         onChanged: (item) {
-          setState(() {
-            currentVendor = item;
+          vendorList.forEach((vendor) {
+            setState(() {
+              currentVendor = vendorList.firstWhere(
+                  (loc) => loc.displayName == item,
+                  orElse: () => vendorList.first);
+            });
           });
         },
       ),
@@ -223,16 +261,35 @@ class InventoryInState extends State<InventoryIn> {
     );
   }
 
-  Future scan() async {
+  scan() async {
+    if (currentlocation == null || currentVendor == null) {
+      _key.currentState.showSnackBar(SnackBar(
+        content: Text('Please select a value for location and Vendor'),
+        duration: Duration(seconds: 1),
+      ));
+      return;
+    }
     try {
-      // String barcode = await BarcodeScanner.scan();
-      // print("BARCODE RECEIVED $barcode");
-      // setState(() => this.barcode = barcode);
+      String barcode = await BarcodeScanner.scan();
       setState(() {
-        barcode = '1446897064';
+        barcode = barcode;
         scanned = true;
+        _isLoading = true;
       });
-      barcodeSearch(barcode);
+
+      // barcodeSearch(barcode);
+
+      Product product = await barcodeSearch(
+          barcode: barcode, email: email, password: password, result: result);
+
+      setState(() {
+        scannedProduct = product;
+        _isLoading = false;
+      });
+      MaterialPageRoute route = MaterialPageRoute(
+          builder: (BuildContext context) =>
+              ProductDetail(scannedProduct, currentVendor, currentlocation));
+      Navigator.of(_key.currentContext).pushReplacement(route);
     } on PlatformException catch (e) {
       if (e.code == BarcodeScanner.CameraAccessDenied) {
         setState(() {
@@ -252,30 +309,5 @@ class InventoryInState extends State<InventoryIn> {
         scanned = false;
       });
     }
-  }
-
-  barcodeSearch(String barcode) async {
-    Map<String, dynamic> body = {
-      "params": {
-        "args": [
-          COMPANY_NAME,
-          result,
-          password,
-          "product.product",
-          "search",
-          [
-            ["barcode", "=", "1446897064"]
-          ]
-        ],
-        "method": "execute",
-        "service": "object"
-      },
-      "jsonrpc": VERSION,
-      "method": "call"
-    };
-    Map<String, dynamic> responseBody =
-        await postRequest(email, password, body);
-
-    print("BARCODE SEARCH RESPONSE $responseBody");
   }
 }

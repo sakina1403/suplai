@@ -3,9 +3,12 @@ import 'package:http/http.dart' as http;
 import 'package:flutter/cupertino.dart';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:scoped_model/scoped_model.dart';
 
 import 'package:suplai/utils/constants.dart';
 import 'package:suplai/screens/home.dart';
+import 'package:suplai/scoped_models/main.dart';
+import 'package:suplai/scoped_models/user.dart';
 
 class AuthenticationScreen extends StatefulWidget {
   @override
@@ -191,6 +194,10 @@ class _AuthenticationScreenState extends State<AuthenticationScreen> {
       prefs.setString('email', email);
       prefs.setString('password', password);
       prefs.setInt('result', responseBody['result']);
+
+      // ScopedModel.of<MainModel>(context, rebuildOnChange: false)
+      //     .setUser(email, password, responseBody['result']);
+
       MaterialPageRoute route =
           MaterialPageRoute(builder: (BuildContext context) => HomeScreen());
       Navigator.pushReplacement(context, route);

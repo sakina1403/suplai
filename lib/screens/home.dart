@@ -21,12 +21,12 @@ class HomeScreenState extends State<HomeScreen> {
       body: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: <Widget>[
-          iconButton('Inventory in', Icons.home, () {
+          iconButton('Inventory In', Icons.home, () {
             MaterialPageRoute route =
                 MaterialPageRoute(builder: (context) => InventoryIn());
             Navigator.push(context, route);
           }),
-          iconButton('Transfer inventory', Icons.local_shipping, () {}),
+          iconButton('Transfer', Icons.local_shipping, () {}),
           iconButton('Consumption', Icons.data_usage, () {})
         ],
       ),

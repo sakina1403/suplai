@@ -19,6 +19,8 @@ const String SERVER_URL = 'http://3.84.219.18:8069/jsonrpc?';
 const String COMPANY_NAME = 'aviabird';
 const String VERSION = "2.0";
 const String DB_NAME = "LVN001_v3";
+const int PICKING_TYPE_ID = 17;
+
 
 Future<Map<String, dynamic>> fetchInfo() async {
   final SharedPreferences prefs = await SharedPreferences.getInstance();
