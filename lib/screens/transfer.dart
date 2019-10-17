@@ -12,33 +12,39 @@ import 'package:suplai/models/product.dart';
 import 'package:suplai/models/vendor.dart';
 import 'package:suplai/models/location.dart';
 
-class InventoryIn extends StatefulWidget {
+class Transfer extends StatefulWidget {
   @override
   State<StatefulWidget> createState() {
-    return InventoryInState();
+    return _TransferState();
   }
 }
 
-class InventoryInState extends State<InventoryIn> {
+class _TransferState extends State<Transfer> {
   Map<String, dynamic> prefsInfo = Map();
   bool scanned = false;
   String barcode = '';
   String email = '';
   String password = '';
   String result = '';
-  List<DropdownMenuItem<String>> locationListDropDown = List();
+  List<DropdownMenuItem<String>> sourceLocationListDropDown = List();
+  List<DropdownMenuItem<String>> destLocationListDropDown = List();
   List<DropdownMenuItem<String>> vendorListDropDown = List();
-  Location currentlocation;
+  Location currentSourceLocation;
+  Location currentDestLocation;
   Vendor currentVendor;
   bool _isLoading = false;
+  bool sourceLocationLoading = true;
+  bool destLocationLoading = true;
+  bool vendorLoading = true;
   GlobalKey<ScaffoldState> _key = GlobalKey<ScaffoldState>();
   Product scannedProduct = Product();
-  List<Location> locationList = [];
+  List<Location> sourceLocationList = [];
+  List<Location> destLocationList = [];
   List<Vendor> vendorList = [];
 
   @override
-  initState() {
-    fetchlocationList();
+  void initState() {
+    fetchsourceLocationList();
     fetchVendorList();
     super.initState();
   }
@@ -48,18 +54,24 @@ class InventoryInState extends State<InventoryIn> {
     return Scaffold(
         key: _key,
         appBar: AppBar(
-          title: Text('Inventory In'),
+          title: Text('Transfer'),
         ),
         body: Stack(children: [
           Column(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: <Widget>[
-              locationDropDown('Select location', locationListDropDown),
+              sourceLocationDropDown(
+                  'Select Source', sourceLocationListDropDown),
+              destLocationDropDown(
+                  'Select Destination', sourceLocationListDropDown),
               vendorDropDown('Select Vendor', vendorListDropDown),
               iconButton('START SCANNING', Icons.space_bar, scan)
             ],
           ),
-          _isLoading
+          _isLoading ||
+                  sourceLocationLoading ||
+                  vendorLoading ||
+                  destLocationLoading
               ? Stack(
                   children: [
                     Opacity(
@@ -85,7 +97,7 @@ class InventoryInState extends State<InventoryIn> {
     });
   }
 
-  fetchlocationList() async {
+  fetchsourceLocationList() async {
     await fetchPrefsInfo();
     Map<String, dynamic> body = {
       "params": {
@@ -108,11 +120,13 @@ class InventoryInState extends State<InventoryIn> {
         await postRequest(email, password, body);
     responseBody['result'].forEach((resultObj) {
       setState(() {
-        locationList
+        sourceLocationList
+            .add(Location(displayName: resultObj['name'], id: resultObj['id']));
+        destLocationList
             .add(Location(displayName: resultObj['name'], id: resultObj['id']));
       });
     });
-    setlocationItems(locationList);
+    setsourceLocationItems(sourceLocationList);
   }
 
   fetchVendorList() async {
@@ -147,10 +161,16 @@ class InventoryInState extends State<InventoryIn> {
     setVendorList(vendorList);
   }
 
-  setlocationItems(List<Location> locationList) {
-    for (Location location in locationList) {
+  setsourceLocationItems(List<Location> sourceLocationList) {
+    for (Location location in sourceLocationList) {
       setState(() {
-        locationListDropDown.add(new DropdownMenuItem(
+        sourceLocationListDropDown.add(new DropdownMenuItem(
+            value: location.displayName,
+            child: Text(
+              location.displayName,
+              style: TextStyle(color: colorCustom, fontSize: 20),
+            )));
+        destLocationListDropDown.add(new DropdownMenuItem(
             value: location.displayName,
             child: Text(
               location.displayName,
@@ -158,6 +178,10 @@ class InventoryInState extends State<InventoryIn> {
             )));
       });
     }
+    setState(() {
+      sourceLocationLoading = false;
+      destLocationLoading = false;
+    });
   }
 
   setVendorList(List<Vendor> vendorList) {
@@ -171,16 +195,22 @@ class InventoryInState extends State<InventoryIn> {
             )));
       });
     }
+    setState(() {
+      vendorLoading = false;
+    });
   }
 
-  Widget locationDropDown(String label, List<DropdownMenuItem<String>> list) {
+  Widget sourceLocationDropDown(
+      String label, List<DropdownMenuItem<String>> list) {
     return Container(
       margin: EdgeInsets.all(25),
       child: DropdownButton(
         elevation: 20,
         isExpanded: true,
         items: list,
-        value: currentlocation == null ? null : currentlocation.displayName,
+        value: currentSourceLocation == null
+            ? null
+            : currentSourceLocation.displayName,
         icon: Icon(
           Icons.arrow_drop_down,
           color: colorCustom,
@@ -191,9 +221,39 @@ class InventoryInState extends State<InventoryIn> {
         ),
         onChanged: (item) {
           setState(() {
-            currentlocation = locationList.firstWhere(
+            currentSourceLocation = sourceLocationList.firstWhere(
                 (loc) => loc.displayName == item,
-                orElse: () => locationList.first);
+                orElse: () => sourceLocationList.first);
+          });
+        },
+      ),
+    );
+  }
+
+  Widget destLocationDropDown(
+      String label, List<DropdownMenuItem<String>> list) {
+    return Container(
+      margin: EdgeInsets.all(25),
+      child: DropdownButton(
+        elevation: 20,
+        isExpanded: true,
+        items: list,
+        value: currentDestLocation == null
+            ? null
+            : currentDestLocation.displayName,
+        icon: Icon(
+          Icons.arrow_drop_down,
+          color: colorCustom,
+        ),
+        hint: Text(
+          label,
+          style: TextStyle(color: Colors.black, fontSize: 25),
+        ),
+        onChanged: (item) {
+          setState(() {
+            currentDestLocation = destLocationList.firstWhere(
+                (loc) => loc.displayName == item,
+                orElse: () => destLocationList.first);
           });
         },
       ),
@@ -260,31 +320,47 @@ class InventoryInState extends State<InventoryIn> {
   }
 
   scan() async {
-    if (currentlocation == null || currentVendor == null) {
+    if (currentSourceLocation == null || currentVendor == null) {
       _key.currentState.showSnackBar(SnackBar(
-        content: Text('Please select a value for location and Vendor'),
+        content: Text('Please select a value for sourceLocation and Vendor'),
         duration: Duration(seconds: 1),
+      ));
+      return;
+    } else if (currentDestLocation.id == currentSourceLocation.id) {
+      _key.currentState.showSnackBar(SnackBar(
+        content: Text('Source and Destination cannot be same!'),
+        duration: Duration(seconds: 2),
       ));
       return;
     }
     try {
       // String barcode = await BarcodeScanner.scan();
       setState(() {
-        barcode = "8906004863073";
+        // barcode = barcode;
         scanned = true;
         _isLoading = true;
       });
 
+      // barcodeSearch(barcode);
+
       Product product = await barcodeSearch(
-          barcode: barcode, email: email, password: password, result: result);
+          barcode: "8906004863073",
+          email: email,
+          password: password,
+          result: result);
 
       setState(() {
         scannedProduct = product;
         _isLoading = false;
       });
       MaterialPageRoute route = MaterialPageRoute(
-          builder: (BuildContext context) =>
-              ProductDetail(scannedProduct, currentVendor, currentlocation, true));
+          builder: (BuildContext context) => ProductDetail(
+                scannedProduct,
+                currentVendor,
+                currentSourceLocation,
+                false,
+                destLocation: currentDestLocation,
+              ));
       Navigator.of(_key.currentContext).pushReplacement(route);
     } on PlatformException catch (e) {
       if (e.code == BarcodeScanner.CameraAccessDenied) {

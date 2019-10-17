@@ -1,7 +1,7 @@
 class ReceiptLineItem {
-  final String name;
-  final String vendor;
-  final String quantity;
+  String name;
+  String vendor;
+  String quantity;
 
   ReceiptLineItem({this.name, this.vendor, this.quantity});
 }

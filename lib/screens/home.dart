@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import 'package:suplai/utils/constants.dart';
 import 'package:suplai/screens/inventoryIn.dart';
+import 'package:suplai/screens/transfer.dart';
+import 'package:suplai/widgets/drawer.dart';
 
 class HomeScreen extends StatefulWidget {
   @override
@@ -15,9 +17,9 @@ class HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('suplAI'),
+        title: Text('suplAI', style: TextStyle(fontSize: 24),),
       ),
-      drawer: Drawer(),
+      drawer: HomeDrawer(),
       body: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: <Widget>[
@@ -26,7 +28,11 @@ class HomeScreenState extends State<HomeScreen> {
                 MaterialPageRoute(builder: (context) => InventoryIn());
             Navigator.push(context, route);
           }),
-          iconButton('Transfer', Icons.local_shipping, () {}),
+          iconButton('Transfer', Icons.local_shipping, () {
+            MaterialPageRoute route =
+                MaterialPageRoute(builder: (context) => Transfer());
+            Navigator.push(context, route);
+          }),
           iconButton('Consumption', Icons.data_usage, () {})
         ],
       ),
@@ -41,8 +47,7 @@ class HomeScreenState extends State<HomeScreen> {
         padding: EdgeInsets.all(20),
         color: colorCustom,
         onPressed: onPressed,
-        child:
-            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+        child: Row(mainAxisAlignment: MainAxisAlignment.start, children: [
           Icon(
             icon,
             color: Colors.white,
@@ -53,8 +58,8 @@ class HomeScreenState extends State<HomeScreen> {
           Container(
             width: 180,
             child: Text(
-              label,
-              style: TextStyle(fontSize: 24, color: Colors.white),
+              label.toUpperCase(),
+              style: TextStyle(fontSize: 20, color: Colors.white),
               textAlign: TextAlign.left,
             ),
           ),

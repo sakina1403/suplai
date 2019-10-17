@@ -7,6 +7,7 @@ import 'package:suplai/models/product.dart';
 import 'package:suplai/models/vendor.dart';
 import 'package:suplai/models/location.dart';
 import 'package:suplai/models/receiptLineItem.dart';
+import 'package:suplai/models/moveItem.dart';
 import 'package:suplai/screens/productDetail.dart';
 import 'package:suplai/screens/home.dart';
 import 'package:suplai/utils/request.dart';
@@ -39,6 +40,7 @@ class _ReviewReceiptState extends State<ReviewReceipt> {
   String result = '';
   Product scannedProduct = Product();
   GlobalKey<ScaffoldState> _key = GlobalKey<ScaffoldState>();
+  List<MoveItem> moveItems = [];
 
   // Map<int, TableColumnWidth> columnWidths = {0:Table};
   List<TableRow> tablerows = [
@@ -109,7 +111,8 @@ class _ReviewReceiptState extends State<ReviewReceipt> {
 
   scan() async {
     try {
-      String barcode = await BarcodeScanner.scan();
+      // String barcode = await BarcodeScanner.scan();
+      String barcode = '8906004863073';
       setState(() => this.barcode = barcode);
       setState(() {
         barcode = barcode;
@@ -128,6 +131,7 @@ class _ReviewReceiptState extends State<ReviewReceipt> {
                 scannedProduct,
                 widget.vendor,
                 widget.location,
+                true,
                 receiptNumber: widget.receiptNumber,
                 receiptLineItems: widget.lineItems,
               ));
@@ -154,6 +158,14 @@ class _ReviewReceiptState extends State<ReviewReceipt> {
   }
 
   confirm() async {
+    await actionConfirm();
+    await actionAssign();
+    moveItems = await fetchMoveIds();
+    // await markQuantityDone(moveItems);
+    // bool success = await markReceiptDone();
+  }
+
+  actionConfirm() async {
     Map<String, dynamic> body = {
       "params": {
         "args": [
@@ -161,9 +173,8 @@ class _ReviewReceiptState extends State<ReviewReceipt> {
           result,
           password,
           "stock.picking",
-          "write",
+          "action_confirm",
           [widget.receiptNumber],
-          {"state": "done"}
         ],
         "method": "execute",
         "service": "object"
@@ -173,7 +184,83 @@ class _ReviewReceiptState extends State<ReviewReceipt> {
     };
     Map<String, dynamic> responseBody =
         await postRequest(email, password, body);
-    if (responseBody['result']) {
+  }
+
+  actionAssign() async {
+    Map<String, dynamic> body = {
+      "params": {
+        "args": [
+          COMPANY_NAME,
+          result,
+          password,
+          "stock.picking",
+          "action_assign",
+          [widget.receiptNumber],
+        ],
+        "method": "execute",
+        "service": "object"
+      },
+      "jsonrpc": VERSION,
+      "method": "call"
+    };
+    Map<String, dynamic> responseBody =
+        await postRequest(email, password, body);
+  }
+
+  fetchMoveIds() async {
+    // List<MoveItem> moveItemList = [];
+    Map<String, dynamic> body = {
+      "params": {
+        "args": [
+          COMPANY_NAME,
+          result,
+          password,
+          "stock.move.line",
+          "search_read",
+          [
+            ["picking_id", "=", widget.receiptNumber]
+          ],
+          ["product_qty"]
+        ],
+        "method": "execute",
+        "service": "object"
+      },
+      "jsonrpc": VERSION,
+      "method": "call"
+    };
+    Map<String, dynamic> responseBody =
+        await postRequest(email, password, body);
+    responseBody['result'].forEach((moveId) {
+      moveItems
+          .add(MoveItem(moveId: moveId['id'], quantity: moveId['product_qty']));
+    });
+    markQuantityDone(moveItems);
+  }
+
+  markQuantityDone(List<MoveItem> moveItemsList) async {
+    for (int i = 0; i < moveItemsList.length; i++) {
+      Map<String, dynamic> body = {
+        "params": {
+          "args": [
+            COMPANY_NAME,
+            result,
+            password,
+            "stock.move.line",
+            "write",
+            [moveItemsList[i].moveId],
+            {"qty_done": moveItemsList[i].quantity}
+          ],
+          "method": "execute",
+          "service": "object"
+        },
+        "jsonrpc": VERSION,
+        "method": "call"
+      };
+      Map<String, dynamic> responseBody =
+          await postRequest(email, password, body);
+    }
+    bool success = await markReceiptDone();
+    if (success) {
       MaterialPageRoute route =
           MaterialPageRoute(builder: (BuildContext context) => HomeScreen());
       Navigator.of(_key.currentContext).pushReplacement(route);
@@ -182,6 +269,33 @@ class _ReviewReceiptState extends State<ReviewReceipt> {
         content: Text('Something went wrong! Please try again.'),
         duration: Duration(seconds: 1),
       ));
+    }
+  }
+
+  Future<bool> markReceiptDone() async {
+    Map<String, dynamic> body = {
+      "params": {
+        "args": [
+          COMPANY_NAME,
+          result,
+          password,
+          "stock.picking",
+          "action_done",
+          [widget.receiptNumber],
+        ],
+        "method": "execute",
+        "service": "object"
+      },
+      "jsonrpc": VERSION,
+      "method": "call"
+    };
+    Map<String, dynamic> responseBody =
+        await postRequest(email, password, body);
+
+    if (responseBody['result']) {
+      return true;
+    } else {
+      return false;
     }
   }
 

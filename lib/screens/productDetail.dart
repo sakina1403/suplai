@@ -16,10 +16,18 @@ class ProductDetail extends StatefulWidget {
   final Product product;
   final Vendor vendor;
   final Location location;
+  final Location destLocation;
   final int receiptNumber;
   final List<ReceiptLineItem> receiptLineItems;
-  ProductDetail(this.product, this.vendor, this.location,
-      {this.receiptNumber, this.receiptLineItems});
+  final int transferNumber;
+  final List<ReceiptLineItem> transferLineItems;
+  final bool isReceipt;
+  ProductDetail(this.product, this.vendor, this.location, this.isReceipt,
+      {this.receiptNumber,
+      this.receiptLineItems,
+      this.transferNumber,
+      this.transferLineItems,
+      this.destLocation});
   @override
   State<StatefulWidget> createState() {
     return _ProductDetailState();
@@ -37,13 +45,16 @@ class _ProductDetailState extends State<ProductDetail> {
   Map<String, dynamic> prefsInfo = Map();
   GlobalKey<ScaffoldState> _key = GlobalKey<ScaffoldState>();
   Product scannedProduct = Product();
+  int transferNumber;
   int receiptNumber;
   List<ReceiptLineItem> receiptItems = [];
+  bool exists = false;
 
   @override
   void initState() {
     fetchPrefsInfo();
     receiptNumber = widget.receiptNumber;
+    transferNumber = widget.transferNumber;
     receiptItems =
         widget.receiptLineItems == null ? [] : widget.receiptLineItems;
     scannedProduct = widget.product;
@@ -145,17 +156,26 @@ class _ProductDetailState extends State<ProductDetail> {
       ));
       return;
     }
-    if (receiptNumber == null) {
-      await createReceipt();
+    if (widget.isReceipt) {
+      if (receiptNumber == null) {
+        await createReceipt();
+      }
+
+      await receiptLineCreate();
+    } else {
+      if (receiptNumber == null) {
+        await createTransfer();
+      }
+
+      await transferLineCreate();
+      setState(() {
+        receiptItems.add(ReceiptLineItem(
+            name: scannedProduct.name,
+            vendor: widget.vendor.displayName,
+            quantity: quantity));
+      });
     }
 
-    await receiptLineCreate();
-    setState(() {
-      receiptItems.add(ReceiptLineItem(
-          name: scannedProduct.name,
-          vendor: widget.vendor.displayName,
-          quantity: quantity));
-    });
     scan();
   }
 
@@ -167,13 +187,16 @@ class _ProductDetailState extends State<ProductDetail> {
       ));
       return;
     }
-    await receiptLineCreate();
-    setState(() {
-      receiptItems.add(ReceiptLineItem(
-          name: scannedProduct.name,
-          vendor: widget.vendor.displayName,
-          quantity: quantity));
-    });
+
+    if (widget.isReceipt) {
+      if (receiptNumber == null) {
+        await createReceipt();
+      }
+      await receiptLineCreate();
+    } else {
+      await transferLineCreate();
+    }
+
     MaterialPageRoute route = MaterialPageRoute(
         builder: (context) => ReviewReceipt(widget.product, widget.vendor,
             quantity, receiptItems, widget.location, receiptNumber));
@@ -182,7 +205,8 @@ class _ProductDetailState extends State<ProductDetail> {
 
   scan() async {
     try {
-      String barcode = await BarcodeScanner.scan();
+      // String barcode = await BarcodeScanner.scan();
+      String barcode = '8906004863073';
       setState(() {
         barcode = barcode;
         scanned = true;
@@ -200,6 +224,7 @@ class _ProductDetailState extends State<ProductDetail> {
                 scannedProduct,
                 widget.vendor,
                 widget.location,
+                widget.isReceipt,
                 receiptNumber: receiptNumber,
                 receiptLineItems: receiptItems,
               ));
@@ -240,7 +265,7 @@ class _ProductDetailState extends State<ProductDetail> {
             "product_id": scannedProduct.id,
             "product_uom_qty": quantity,
             "product_uom": scannedProduct.uomId,
-            "location_id": 1,
+            "location_id": 8,
             "location_dest_id": widget.location.id
           }
         ],
@@ -253,6 +278,25 @@ class _ProductDetailState extends State<ProductDetail> {
 
     Map<String, dynamic> responseBody =
         await postRequest(email, password, body);
+    receiptItems.forEach((receipt) {
+      if (receipt.name == scannedProduct.name) {
+        setState(() {
+          exists = true;
+          receipt.quantity =
+              (int.parse(receipt.quantity) + int.parse(quantity)).toString();
+        });
+      }
+    });
+
+    if (!exists) {
+      setState(() {
+        receiptItems.add(ReceiptLineItem(
+          name: scannedProduct.name,
+          vendor: widget.vendor.displayName,
+          quantity: quantity,
+        ));
+      });
+    }
   }
 
   createReceipt() async {
@@ -265,10 +309,41 @@ class _ProductDetailState extends State<ProductDetail> {
           "stock.picking",
           "create",
           {
-            "partner_id": "14",
-            "picking_type_id": PICKING_TYPE_ID,
+            "partner_id": widget.vendor.id,
+            "picking_type_id": PICKING_TYPE_ID_RECEIPT,
             "location_dest_id": widget.location.id,
-            "location_id": 1
+            "location_id": 8
+          }
+        ],
+        "method": "execute",
+        "service": "object"
+      },
+      "jsonrpc": VERSION,
+      "method": "call"
+    };
+
+    Map<String, dynamic> responseBody =
+        await postRequest(email, password, body);
+    print(responseBody['result']);
+    setState(() {
+      receiptNumber = responseBody['result'];
+    });
+  }
+
+  createTransfer() async {
+    Map<String, dynamic> body = {
+      "params": {
+        "args": [
+          COMPANY_NAME,
+          result,
+          password,
+          "stock.picking",
+          "create",
+          {
+            "partner_id": widget.vendor.id,
+            "picking_type_id": PICKING_TYPE_ID_TRANSFER,
+            "location_dest_id": widget.destLocation.id,
+            "location_id": widget.location.id
           }
         ],
         "method": "execute",
@@ -279,10 +354,39 @@ class _ProductDetailState extends State<ProductDetail> {
     };
     Map<String, dynamic> responseBody =
         await postRequest(email, password, body);
-    print(responseBody['result']);
     setState(() {
-      receiptNumber = responseBody['result'];
+      transferNumber = responseBody['result'];
     });
+  }
+
+  transferLineCreate() async {
+    Map<String, dynamic> body = {
+      "params": {
+        "args": [
+          COMPANY_NAME,
+          result,
+          password,
+          "stock.move",
+          "create",
+          {
+            "name": scannedProduct.name,
+            "picking_id": transferNumber,
+            "product_id": scannedProduct.id,
+            "product_uom_qty": quantity,
+            "product_uom": scannedProduct.uomId,
+            "location_id": widget.location.id,
+            "location_dest_id": widget.destLocation.id
+          }
+        ],
+        "method": "execute",
+        "service": "object"
+      },
+      "jsonrpc": VERSION,
+      "method": "call"
+    };
+
+    Map<String, dynamic> responseBody =
+        await postRequest(email, password, body);
   }
 
   Widget iconButton(String label, Function onPressed) {
